@@ -72,10 +72,17 @@ Units (pure logic kept separate from shell for testability):
   schedule/replace/cancel reset notification, fire 90% warning, reset the warned
   flag when a new window starts.
 - **UsageClient** — Keychain read + HTTP call (async, URLSession).
-- **NotificationManager** — applies decider actions via `UNUserNotificationCenter`.
-  Reset notifications are *scheduled* (`UNCalendarNotificationTrigger` at
-  `resets_at`, stable identifiers `session-reset` / `weekly-reset`) so they fire
-  on time even between polls; rescheduled whenever `resets_at` changes.
+- **NotificationManager** — applies decider actions. Two delivery modes, chosen
+  per poll from `getNotificationSettings`:
+  - *Authorized (signed builds):* `UNUserNotificationCenter`, with reset
+    notifications scheduled at `resets_at` (`UNCalendarNotificationTrigger`,
+    stable identifiers `session-reset` / `weekly-reset`).
+  - *Fallback (ad-hoc builds — discovered during implementation: macOS refuses
+    UN authorization to ad-hoc-signed apps with `UNErrorDomain Code=1` and never
+    shows a prompt):* AppleScript `display notification` via `/usr/bin/osascript`,
+    driven by the decider's poll-time `notifyReset` event (fires when the tracked
+    `resets_at` passes and the API rolls the window — within 60 s of the reset,
+    or on wake). Verified end-to-end on this machine.
 - **AppDelegate / StatusBarController** — NSStatusItem, menu, Settings submenu,
   60-second poll timer, immediate refresh on wake-from-sleep
   (`NSWorkspace.didWakeNotification`).

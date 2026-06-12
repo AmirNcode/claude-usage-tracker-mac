@@ -23,9 +23,9 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         guard available else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
             if let error {
-                NSLog("Notification authorization error: \(error.localizedDescription)")
+                AppLog.log("Notification authorization error: \(error)")
             } else {
-                NSLog("Notification authorization granted: \(granted)")
+                AppLog.log("Notification authorization granted: \(granted)")
             }
         }
     }
@@ -43,55 +43,105 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
             notificationsEnabled: enabled
         )
         saveState(newState, kind)
-        guard available else { return }
+        guard available, !actions.isEmpty else { return }
 
+        // Unsigned/ad-hoc builds are refused UN authorization (UNErrorDomain
+        // Code=1, no prompt shown), so notifications fall back to AppleScript.
+        // If the app is ever properly signed and authorized, the scheduled UN
+        // path takes over automatically.
+        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
+            let viaUN = settings.authorizationStatus == .authorized
+            for action in actions {
+                self?.perform(action, viaUN: viaUN)
+            }
+        }
+    }
+
+    private func perform(_ action: NotificationAction, viaUN: Bool) {
         let center = UNUserNotificationCenter.current()
-        for action in actions {
-            switch action {
-            case .scheduleReset(let kind, let date):
-                let content = UNMutableNotificationContent()
-                content.title = kind == .session
-                    ? "Session usage reset to 0%"
-                    : "Weekly usage reset to 0%"
-                content.body = kind == .session
-                    ? "A fresh 5-hour session window is available."
-                    : "A fresh weekly limit window is available."
-                content.sound = .default
-                let components = Calendar.current.dateComponents(
-                    [.year, .month, .day, .hour, .minute, .second], from: date
-                )
-                let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
-                center.add(UNNotificationRequest(
-                    identifier: "\(kind.rawValue)-reset", content: content, trigger: trigger
-                )) { error in
-                    if let error {
-                        NSLog("Scheduling \(kind.rawValue) reset notification failed: \(error.localizedDescription)")
-                    }
+        switch action {
+        case .scheduleReset(let kind, let date):
+            guard viaUN else { return }
+            let content = UNMutableNotificationContent()
+            content.title = resetTitle(kind)
+            content.body = resetBody(kind)
+            content.sound = .default
+            let components = Calendar.current.dateComponents(
+                [.year, .month, .day, .hour, .minute, .second], from: date
+            )
+            let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+            center.add(UNNotificationRequest(
+                identifier: "\(kind.rawValue)-reset", content: content, trigger: trigger
+            )) { error in
+                if let error {
+                    AppLog.log("Scheduling \(kind.rawValue) reset notification failed: \(error)")
                 }
-            case .cancelReset(let kind):
-                center.removePendingNotificationRequests(withIdentifiers: ["\(kind.rawValue)-reset"])
-            case .warn90(let kind, let utilization, let resetsAt):
+            }
+        case .cancelReset(let kind):
+            guard viaUN else { return }
+            center.removePendingNotificationRequests(withIdentifiers: ["\(kind.rawValue)-reset"])
+        case .notifyReset(let kind):
+            // In UN mode the notification scheduled at resets_at already fired.
+            guard !viaUN else { return }
+            postViaAppleScript(title: resetTitle(kind), body: resetBody(kind))
+        case .warn90(let kind, let utilization, let resetsAt):
+            let title = kind == .session
+                ? "Session usage at \(Int(utilization.rounded()))%"
+                : "Weekly usage at \(Int(utilization.rounded()))%"
+            var body = ""
+            if let resetsAt {
+                let line = kind == .session
+                    ? UsageFormatter.sessionLine(UsageSnapshot(
+                        session: UsageWindow(utilization: utilization, resetsAt: resetsAt), weekly: nil))
+                    : UsageFormatter.weeklyLine(UsageSnapshot(
+                        session: nil, weekly: UsageWindow(utilization: utilization, resetsAt: resetsAt)))
+                body = "Resets at \(line.components(separatedBy: " - ").last ?? "")"
+            }
+            if viaUN {
                 let content = UNMutableNotificationContent()
-                content.title = kind == .session
-                    ? "Session usage at \(Int(utilization.rounded()))%"
-                    : "Weekly usage at \(Int(utilization.rounded()))%"
-                if let resetsAt {
-                    let line = kind == .session
-                        ? UsageFormatter.sessionLine(UsageSnapshot(
-                            session: UsageWindow(utilization: utilization, resetsAt: resetsAt), weekly: nil))
-                        : UsageFormatter.weeklyLine(UsageSnapshot(
-                            session: nil, weekly: UsageWindow(utilization: utilization, resetsAt: resetsAt)))
-                    content.body = "Resets at \(line.components(separatedBy: " - ").last ?? "")"
-                }
+                content.title = title
+                content.body = body
                 content.sound = .default
                 center.add(UNNotificationRequest(
                     identifier: "\(kind.rawValue)-warn90", content: content, trigger: nil
                 )) { error in
                     if let error {
-                        NSLog("Delivering \(kind.rawValue) 90% warning failed: \(error.localizedDescription)")
+                        AppLog.log("Delivering \(kind.rawValue) 90% warning failed: \(error)")
                     }
                 }
+            } else {
+                postViaAppleScript(title: title, body: body)
             }
+        }
+    }
+
+    private func resetTitle(_ kind: UsageWindowKind) -> String {
+        kind == .session ? "Session usage reset to 0%" : "Weekly usage reset to 0%"
+    }
+
+    private func resetBody(_ kind: UsageWindowKind) -> String {
+        kind == .session
+            ? "A fresh 5-hour session window is available."
+            : "A fresh weekly limit window is available."
+    }
+
+    private func postViaAppleScript(title: String, body: String) {
+        func escaped(_ s: String) -> String {
+            s.replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+        }
+        let script = "display notification \"\(escaped(body))\" with title \"\(escaped(title))\""
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", script]
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            AppLog.log("Posted notification via osascript (exit \(process.terminationStatus)): \(title)")
+        } catch {
+            AppLog.log("osascript notification failed: \(error)")
         }
     }
 

@@ -23,6 +23,10 @@ public enum NotificationAction: Equatable {
     case cancelReset(window: UsageWindowKind)
     /// Fire an immediate "usage at/over 90%" warning.
     case warn90(window: UsageWindowKind, utilization: Double, resetsAt: Date?)
+    /// The tracked window's reset time has passed and the window rolled: announce
+    /// "usage reset to 0%" now. Used for poll-driven delivery when scheduled
+    /// notifications are unavailable (unsigned builds get no UN authorization).
+    case notifyReset(window: UsageWindowKind)
 }
 
 /// Pure decision logic for notifications; the caller applies the returned actions
@@ -35,8 +39,19 @@ public enum NotificationDecider {
         notificationsEnabled: Bool,
         now: Date = Date()
     ) -> (actions: [NotificationAction], newState: WindowTrackingState) {
+        // The window we were tracking ended (its reset time passed and the API
+        // no longer reports it) — the usage counter has reset to 0%.
+        let resetHappened = previous.resetsAt.map { tracked in
+            now >= tracked && window?.resetsAt != tracked
+        } ?? false
+
         guard let window else {
-            return ([.cancelReset(window: kind)], WindowTrackingState())
+            var actions: [NotificationAction] = []
+            if notificationsEnabled, resetHappened {
+                actions.append(.notifyReset(window: kind))
+            }
+            actions.append(.cancelReset(window: kind))
+            return (actions, WindowTrackingState())
         }
 
         var state = previous
@@ -51,6 +66,9 @@ public enum NotificationDecider {
         }
 
         var actions: [NotificationAction] = []
+        if resetHappened {
+            actions.append(.notifyReset(window: kind))
+        }
         // Always (re)schedule: replacing a pending request with the same identifier
         // is a no-op, and it self-heals when notification permission is granted
         // after the window was first seen.

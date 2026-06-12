@@ -17,10 +17,18 @@ Settings ▸         Launch at Login ✓ / Notifications ✓ / Refresh Now / Qui
 
 ## Notifications
 
-- **Reset alerts** — fires the moment the 5-hour session window or the weekly
-  window resets ("Session usage reset to 0%"), so you can use your limits
-  efficiently. Scheduled locally at the exact reset time, not dependent on polling.
+- **Reset alerts** — "Session usage reset to 0%" / "Weekly usage reset to 0%",
+  so you can use your limits efficiently.
 - **90% warning** — fires once per window the first time usage crosses 90%.
+
+**Delivery mechanics:** macOS refuses notification authorization to ad-hoc-signed
+apps (no permission prompt is ever shown — `UNErrorDomain Code=1`), and local
+builds without a paid Apple Developer certificate are ad-hoc-signed. The app
+therefore posts notifications via AppleScript (`display notification`), which
+needs no signing; they appear with the Script Editor icon. Reset alerts arrive
+within a minute of the reset (the app polls every 60 s and on wake). If the app
+is ever signed with a real certificate and granted notification permission, it
+automatically switches to native notifications scheduled at the exact reset time.
 
 ## How it works
 
@@ -42,11 +50,13 @@ make install   # build, copy to /Applications, launch
 make status    # print current usage in the terminal (no GUI)
 ```
 
-On first launch the app:
+On first launch the app registers itself as a **login item** (toggle in
+Settings ▸ Launch at Login). No permission prompts are needed: notifications use
+the AppleScript fallback described above, and the Keychain token is read through
+`/usr/bin/security`, which has its own access. If macOS ever shows a Keychain
+prompt for it, click *Always Allow*.
 
-- asks for **notification permission** — click *Allow* to get reset/90% alerts;
-- registers itself as a **login item** (toggle in Settings ▸ Launch at Login);
-- if macOS ever shows a **Keychain prompt** for it, click *Always Allow*.
+Diagnostics are appended to `~/Library/Logs/ClaudeUsageTracker.log`.
 
 ## Error states
 

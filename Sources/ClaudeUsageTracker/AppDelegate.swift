@@ -134,7 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func applyError(_ error: Error) {
-        NSLog("Usage refresh failed: \(error)")
+        AppLog.log("Usage refresh failed: \(error)")
         // Keep showing the last known data; only surface errors when there is none.
         guard lastSnapshot == nil else { return }
         statusItem.button?.title = UsageFormatter.menuBarTitle(nil)
@@ -169,7 +169,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 try service.register()
             }
         } catch {
-            NSLog("Launch at login toggle failed: \(error)")
+            AppLog.log("Launch at login toggle failed: \(error)")
         }
     }
 
@@ -183,7 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             try SMAppService.mainApp.register()
             defaults.set(true, forKey: "didRegisterLoginItem")
         } catch {
-            NSLog("Initial launch-at-login registration failed: \(error)")
+            AppLog.log("Initial launch-at-login registration failed: \(error)")
         }
     }
 }

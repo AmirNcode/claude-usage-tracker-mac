@@ -80,6 +80,51 @@ func runNotificationDeciderTests() {
         expectEqual(result.newState, WindowTrackingState())
     }
 
+    // Poll-driven reset detection, used when scheduled notifications are
+    // unavailable (unsigned app builds cannot get UN authorization).
+    test("tracked reset passing fires notifyReset when window rolls") {
+        let past = Date(timeIntervalSince1970: 1781270000) // before `now`
+        let prev = WindowTrackingState(resetsAt: past, warnedAt90: true)
+        let result = decide(previous: prev, window: UsageWindow(utilization: 5, resetsAt: reset1))
+        expectEqual(result.actions, [
+            .notifyReset(window: .session),
+            .scheduleReset(window: .session, at: reset1),
+        ])
+        expectEqual(result.newState, WindowTrackingState(resetsAt: reset1, warnedAt90: false))
+    }
+
+    test("tracked reset passing fires notifyReset when window disappears") {
+        let past = Date(timeIntervalSince1970: 1781270000)
+        let prev = WindowTrackingState(resetsAt: past, warnedAt90: false)
+        let result = decide(previous: prev, window: nil)
+        expectEqual(result.actions, [
+            .notifyReset(window: .session),
+            .cancelReset(window: .session),
+        ])
+        expectEqual(result.newState, WindowTrackingState())
+    }
+
+    test("no notifyReset while API still reports the passed reset date") {
+        let past = Date(timeIntervalSince1970: 1781270000)
+        let prev = WindowTrackingState(resetsAt: past, warnedAt90: false)
+        let result = decide(previous: prev, window: UsageWindow(utilization: 95, resetsAt: past))
+        expect(!result.actions.contains(.notifyReset(window: .session)),
+               "should wait for the API to roll the window, got \(result.actions)")
+    }
+
+    test("no notifyReset when tracked reset is still in the future") {
+        let prev = WindowTrackingState(resetsAt: reset1, warnedAt90: false)
+        let result = decide(previous: prev, window: UsageWindow(utilization: 5, resetsAt: reset2))
+        expectEqual(result.actions, [.scheduleReset(window: .session, at: reset2)])
+    }
+
+    test("no notifyReset when notifications disabled") {
+        let past = Date(timeIntervalSince1970: 1781270000)
+        let prev = WindowTrackingState(resetsAt: past, warnedAt90: false)
+        let result = decide(previous: prev, window: UsageWindow(utilization: 5, resetsAt: reset1), enabled: false)
+        expectEqual(result.actions, [.cancelReset(window: .session)])
+    }
+
     test("past reset date is not scheduled") {
         let past = Date(timeIntervalSince1970: 1781270000) // before `now`
         let result = decide(window: UsageWindow(utilization: 30, resetsAt: past))
