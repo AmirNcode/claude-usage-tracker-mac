@@ -24,27 +24,35 @@ func runNotificationDeciderTests() {
         expectEqual(result.newState.warnedAt90, false)
     }
 
-    test("unchanged reset date produces no actions") {
+    // Scheduling is idempotent (same identifier replaces itself) so a notification
+    // attempted before the user granted permission is retried on every poll.
+    test("unchanged reset date reschedules idempotently") {
         let prev = WindowTrackingState(resetsAt: reset1, warnedAt90: false)
         let result = decide(previous: prev, window: UsageWindow(utilization: 45, resetsAt: reset1))
-        expect(result.actions.isEmpty, "expected no actions, got \(result.actions)")
+        expectEqual(result.actions, [.scheduleReset(window: .session, at: reset1)])
         expectEqual(result.newState, prev)
     }
 
     test("crossing 90 fires warning once") {
         let prev = WindowTrackingState(resetsAt: reset1, warnedAt90: false)
         let first = decide(previous: prev, window: UsageWindow(utilization: 92, resetsAt: reset1))
-        expectEqual(first.actions, [.warn90(window: .session, utilization: 92, resetsAt: reset1)])
+        expectEqual(first.actions, [
+            .scheduleReset(window: .session, at: reset1),
+            .warn90(window: .session, utilization: 92, resetsAt: reset1),
+        ])
         expectEqual(first.newState.warnedAt90, true)
 
         let second = decide(previous: first.newState, window: UsageWindow(utilization: 95, resetsAt: reset1))
-        expect(second.actions.isEmpty, "expected no actions, got \(second.actions)")
+        expectEqual(second.actions, [.scheduleReset(window: .session, at: reset1)])
     }
 
     test("exactly 90 counts as warning") {
         let prev = WindowTrackingState(resetsAt: reset1, warnedAt90: false)
         let result = decide(previous: prev, window: UsageWindow(utilization: 90, resetsAt: reset1))
-        expectEqual(result.actions, [.warn90(window: .session, utilization: 90, resetsAt: reset1)])
+        expectEqual(result.actions, [
+            .scheduleReset(window: .session, at: reset1),
+            .warn90(window: .session, utilization: 90, resetsAt: reset1),
+        ])
     }
 
     test("new window resets warning flag and reschedules") {

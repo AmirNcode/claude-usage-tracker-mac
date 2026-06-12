@@ -51,12 +51,13 @@ public enum NotificationDecider {
         }
 
         var actions: [NotificationAction] = []
-        if windowChanged {
-            if let resetsAt = window.resetsAt, resetsAt > now {
-                actions.append(.scheduleReset(window: kind, at: resetsAt))
-            } else {
-                actions.append(.cancelReset(window: kind))
-            }
+        // Always (re)schedule: replacing a pending request with the same identifier
+        // is a no-op, and it self-heals when notification permission is granted
+        // after the window was first seen.
+        if let resetsAt = window.resetsAt, resetsAt > now {
+            actions.append(.scheduleReset(window: kind, at: resetsAt))
+        } else {
+            actions.append(.cancelReset(window: kind))
         }
         if window.utilization >= 90, !state.warnedAt90 {
             actions.append(.warn90(window: kind, utilization: window.utilization, resetsAt: window.resetsAt))

@@ -63,7 +63,11 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
                 let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
                 center.add(UNNotificationRequest(
                     identifier: "\(kind.rawValue)-reset", content: content, trigger: trigger
-                ))
+                )) { error in
+                    if let error {
+                        NSLog("Scheduling \(kind.rawValue) reset notification failed: \(error.localizedDescription)")
+                    }
+                }
             case .cancelReset(let kind):
                 center.removePendingNotificationRequests(withIdentifiers: ["\(kind.rawValue)-reset"])
             case .warn90(let kind, let utilization, let resetsAt):
@@ -82,7 +86,11 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
                 content.sound = .default
                 center.add(UNNotificationRequest(
                     identifier: "\(kind.rawValue)-warn90", content: content, trigger: nil
-                ))
+                )) { error in
+                    if let error {
+                        NSLog("Delivering \(kind.rawValue) 90% warning failed: \(error.localizedDescription)")
+                    }
+                }
             }
         }
     }
