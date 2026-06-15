@@ -1,10 +1,16 @@
-.PHONY: test app install status clean
+.PHONY: test icon app dmg install status clean
 
 test:
 	swift run UsageCoreTests
 
+icon:
+	./scripts/build-icon.sh
+
 app:
 	./scripts/build-app.sh
+
+dmg:
+	./scripts/make-dmg.sh
 
 # Installs to /Applications and (re)launches the app.
 install: app

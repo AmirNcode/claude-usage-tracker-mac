@@ -10,6 +10,8 @@
 	<string>com.amirncode.ClaudeUsageTracker</string>
 	<key>CFBundleExecutable</key>
 	<string>ClaudeUsageTracker</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

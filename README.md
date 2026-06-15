@@ -1,79 +1,167 @@
-# Claude Usage Tracker (macOS menu bar)
+<div align="center">
 
-A tiny native macOS menu bar app that shows your Claude subscription usage limits,
-as consumed by Claude Code / claude.ai:
+<img src="docs/images/icon.png" width="120" alt="Claude Usage Tracker icon" />
+
+# Claude Usage Tracker
+
+**A tiny native macOS menu bar app that shows your Claude usage limits at a glance.**
+
+[![Release](https://github.com/AmirNcode/claude-usage-tracker-mac/actions/workflows/release.yml/badge.svg)](https://github.com/AmirNcode/claude-usage-tracker-mac/actions/workflows/release.yml)
+![Platform](https://img.shields.io/badge/macOS-14%2B-blue)
+![Swift](https://img.shields.io/badge/Swift-AppKit%20%2B%20SwiftUI-orange)
+![License](https://img.shields.io/badge/license-MIT-green)
+
+<img src="docs/images/menubar.png" height="26" alt="Menu bar showing 58% / 6%" />
+
+</div>
+
+---
+
+Claude Usage Tracker lives in your menu bar and shows two numbers:
 
 ```
-43% / 73%        ← menu bar: [5-hour session used] / [weekly limit used]
+58% / 6%
 ```
 
-Clicking it shows:
+- **Left** — how much of your current **5-hour session** window you've used.
+- **Right** — how much of your **7-day weekly** limit you've used.
+
+Click it for the exact reset times, and open **Settings** to log in, pick colors,
+and tune the refresh rate.
+
+## Features
+
+- 🧮 **Session & weekly usage** in the menu bar, updated automatically.
+- 🎨 **Custom colors** for each percentage, with optional **threshold highlighting** —
+  turns **orange at 90%** and **red at 100%** so you notice before you run out.
+- 🔌 **Connect your Claude account** with a browser login, or let it read
+  [Claude Code](https://claude.com/claude-code)'s session automatically if it's installed.
+- 🪶 **Native and lightweight** — Swift + AppKit/SwiftUI, no Electron, ~1 MB, negligible memory.
+- 🚀 **Launch at login**, configurable refresh interval, and a clean Settings window.
+
+## Menu
+
+Clicking the menu bar item shows:
 
 ```
-43% - 20:30      ← session usage, resets at 20:30 (local time)
-73% - Mon 05:59  ← weekly usage, resets Monday 05:59 (local time)
-Settings ▸         Launch at Login ✓ / Notifications ✓ / Refresh Now / Quit
+Session   58% - 16:29       ← used % and when the 5-hour window resets (local time)
+Weekly    6%  - Mon 05:59   ← used % and when the weekly window resets (local time)
+──────────────
+Refresh Now
+Settings…
+Quit
 ```
 
-## Notifications
+## Install
 
-- **Reset alerts** — "Session usage reset to 0%" / "Weekly usage reset to 0%",
-  so you can use your limits efficiently.
-- **90% warning** — fires once per window the first time usage crosses 90%.
+### Download (recommended)
 
-**Delivery mechanics:** macOS refuses notification authorization to ad-hoc-signed
-apps (no permission prompt is ever shown — `UNErrorDomain Code=1`), and local
-builds without a paid Apple Developer certificate are ad-hoc-signed. The app
-therefore posts notifications via AppleScript (`display notification`), which
-needs no signing; they appear with the Script Editor icon. Reset alerts arrive
-within a minute of the reset (the app polls every 60 s and on wake). If the app
-is ever signed with a real certificate and granted notification permission, it
-automatically switches to native notifications scheduled at the exact reset time.
+1. Grab the latest `ClaudeUsageTracker.dmg` from
+   [**Releases**](https://github.com/AmirNcode/claude-usage-tracker-mac/releases).
+2. Open it and drag **Claude Usage Tracker** to **Applications**.
+3. First launch: because the app isn't notarized yet, right-click it →
+   **Open** → **Open** to bypass Gatekeeper (only needed once).
+
+### Build from source
+
+Requires macOS 14+ and the Swift toolchain (Xcode Command Line Tools are enough —
+no full Xcode needed).
+
+```sh
+git clone https://github.com/AmirNcode/claude-usage-tracker-mac.git
+cd claude-usage-tracker-mac
+make install      # build the .app, copy to /Applications, launch
+```
+
+Other targets:
+
+```sh
+make test         # run the unit tests
+make app          # build build/ClaudeUsageTracker.app
+make dmg          # build a distributable build/ClaudeUsageTracker.dmg
+make status       # print current usage in the terminal (no GUI)
+```
+
+## Connecting your account
+
+The app needs a Claude token to read usage. It tries, in order:
+
+1. **Your own login** — open **Settings → Account → Log in with Claude…**. A browser
+   window opens; approve access, copy the code it shows, and paste it back into the app.
+   The app stores its own token in your Keychain and refreshes it automatically.
+2. **Claude Code's session** — if you have [Claude Code](https://claude.com/claude-code)
+   installed and logged in, the app reads its Keychain token (read-only — it never
+   modifies or refreshes Claude Code's credentials).
+
+> [!IMPORTANT]
+> There is no official public usage API. This app uses the same private endpoint
+> and OAuth client that Claude Code uses. That means the login flow is
+> **unofficial and may break or change** at any time, and could be subject to
+> Anthropic's terms. The Claude Code fallback keeps the app working even if the
+> login flow stops working. Use at your own discretion.
+
+## Settings
+
+| Tab | Options |
+|-----|---------|
+| **Account** | Connection status, last refreshed time, last error, Log in / Log out |
+| **Appearance** | Threshold highlighting (orange ≥90%, red ≥100%), custom colors for session & weekly % |
+| **General** | Launch at login, refresh interval (1–15 min), Refresh now |
+| **About** | Version, links to this repo and the issue tracker |
 
 ## How it works
 
-Claude Code stores an OAuth token in the macOS Keychain (item
-`Claude Code-credentials`). The app reads that token (read-only — it never
-refreshes or modifies your credentials) and polls Anthropic's usage endpoint
-(`GET https://api.anthropic.com/api/oauth/usage`) every 60 seconds, plus
-immediately on wake from sleep.
+```
+┌─────────────┐   token    ┌──────────────┐   GET /api/oauth/usage   ┌──────────┐
+│ AuthManager │ ─────────▶ │  UsageClient  │ ───────────────────────▶ │ Anthropic │
+│  OAuth /    │            │ (cache-free,  │                          │  usage    │
+│ Claude Code │ ◀───────── │  429 backoff) │ ◀─────────────────────── │ endpoint  │
+└─────────────┘            └──────────────┘      five_hour/seven_day  └──────────┘
+```
 
-Requirements: macOS 14+, Claude Code logged in with a Pro/Max subscription
-account. No dependencies; no Xcode needed to build (Command Line Tools suffice).
+It polls every few minutes (5 by default), backs off and respects `Retry-After`
+when rate-limited, and refreshes immediately when your Mac wakes from sleep.
+Usage windows change slowly, so a low polling rate is plenty and avoids tripping
+the endpoint's rate limit.
 
-## Build & install
+The codebase is split for testability:
+
+```
+Sources/UsageCore/            pure, unit-tested logic: API parsing, formatting,
+                              usage levels, OAuth/PKCE, token model, usage client
+Sources/ClaudeUsageTracker/   app shell: menu bar, SwiftUI settings, auth, keychain
+Tests/UsageCoreTests/         assertion-based test runner (CLT toolchain ships no XCTest)
+scripts/                      icon generation, .app bundling, DMG packaging
+.github/workflows/release.yml tag a vX.Y.Z → builds, tests, attaches a DMG to the release
+```
+
+## Releasing
+
+Push a tag and the GitHub Action builds a DMG and attaches it to the release:
 
 ```sh
-make test      # run unit tests
-make app       # build build/ClaudeUsageTracker.app
-make install   # build, copy to /Applications, launch
-make status    # print current usage in the terminal (no GUI)
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
-On first launch the app registers itself as a **login item** (toggle in
-Settings ▸ Launch at Login). No permission prompts are needed: notifications use
-the AppleScript fallback described above, and the Keychain token is read through
-`/usr/bin/security`, which has its own access. If macOS ever shows a Keychain
-prompt for it, click *Always Allow*.
+To ship a **signed, notarizable** build, add a `CODESIGN_IDENTITY` repository secret
+(your "Developer ID Application" identity) and the build will use it; otherwise the
+DMG is ad-hoc signed (users do the right-click → Open step once).
 
-Diagnostics are appended to `~/Library/Logs/ClaudeUsageTracker.log`.
+## Troubleshooting
 
-## Error states
+- **`–% / –%` in the menu bar** — not connected. Open Settings → Account and log in,
+  or install and log in to Claude Code.
+- **Numbers look frozen** — check Settings → Account → *Last error*. If you see
+  "Rate limited", the app is backing off and will recover automatically; increasing
+  the refresh interval helps.
+- **Diagnostics** — errors are appended to `~/Library/Logs/ClaudeUsageTracker.log`.
 
-| Menu bar | First menu line | Meaning |
-|---|---|---|
-| `–% / –%` | `Claude Code not logged in` | No credentials in the Keychain |
-| `–% / –%` | `Token expired — use Claude Code` | Stored token expired; run any Claude Code command to refresh it |
-| `–% / –%` | `Offline — retrying every minute` | Network/API error before first successful fetch |
-| stale values | — | Errors after a successful fetch keep the last known data |
+## Contributing
 
-## Project layout
+Issues and PRs welcome. Run `make test` before submitting. The pure logic in
+`Sources/UsageCore` is covered by tests; please keep it that way.
 
-```
-Sources/UsageCore/            pure logic: parsing, formatting, notification decisions, API client
-Sources/ClaudeUsageTracker/   app shell: menu bar UI, settings, UNUserNotificationCenter
-Tests/UsageCoreTests/         assertion-based test runner (CLT toolchain has no XCTest)
-Resources/Info.plist          bundle metadata (LSUIElement menu bar app)
-scripts/build-app.sh          builds and ad-hoc signs the .app
-docs/superpowers/specs/       design spec
-```
+## License
+
+[MIT](LICENSE) © 2026 Amir
