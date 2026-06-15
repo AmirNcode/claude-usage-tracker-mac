@@ -155,19 +155,6 @@ scripts/                      icon generation, .app bundling, DMG packaging
 .github/workflows/release.yml tag a vX.Y.Z → builds, tests, attaches a DMG to the release
 ```
 
-## Releasing
-
-Push a tag and the GitHub Action builds a DMG and attaches it to the release:
-
-```sh
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-To ship a **signed, notarizable** build, add a `CODESIGN_IDENTITY` repository secret
-(your "Developer ID Application" identity) and the build will use it; otherwise the
-DMG is ad-hoc signed (users do the right-click → Open step once).
-
 ## Troubleshooting
 
 - **`–% / –%` in the menu bar** — not connected. Open Settings → Account and log in,
