@@ -1,4 +1,6 @@
 runUsageModelTests()
 runUsageFormatterTests()
-runNotificationDeciderTests()
+runUsageLevelTests()
+runOAuthPKCETests()
+runTokenTests()
 TestRunner.shared.finish()

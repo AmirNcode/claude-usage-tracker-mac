@@ -1,49 +1,51 @@
 import AppKit
+import Combine
 import ServiceManagement
+import SwiftUI
 import UsageCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
-    private let refreshInterval: TimeInterval = 60
-
+    private let prefs = Preferences.shared
+    private let state = AppState()
+    private let auth = AuthManager()
     private let client = UsageClient()
-    private let notifications = NotificationManager()
-    private let defaults = UserDefaults.standard
 
     private var statusItem: NSStatusItem!
     private var sessionItem: NSMenuItem!
     private var weeklyItem: NSMenuItem!
-    private var launchAtLoginItem: NSMenuItem!
-    private var notificationsItem: NSMenuItem!
-    private var timer: Timer?
-    private var lastSnapshot: UsageSnapshot?
+    private var settingsWindow: NSWindow?
+    private var cancellables = Set<AnyCancellable>()
 
-    private var isRunningFromAppBundle: Bool {
-        Bundle.main.bundleURL.pathExtension == "app"
-    }
-
-    private var notificationsEnabled: Bool {
-        get { defaults.object(forKey: "notificationsEnabled") as? Bool ?? true }
-        set { defaults.set(newValue, forKey: "notificationsEnabled") }
-    }
+    // Variable-interval polling with exponential backoff on failure.
+    private var pollWorkItem: DispatchWorkItem?
+    private var consecutiveFailures = 0
+    private let maxBackoff: TimeInterval = 30 * 60
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
-        statusItem.button?.title = UsageFormatter.menuBarTitle(nil)
         statusItem.menu = buildMenu()
+        render()
 
-        notifications.requestAuthorization()
-        registerLaunchAtLoginOnFirstRun()
+        state.source = auth.source
+        applyLaunchAtLogin(prefs.launchAtLogin)
+
+        // Re-render the menu bar and re-apply login item whenever settings change.
+        prefs.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in
+                guard let self else { return }
+                DispatchQueue.main.async {
+                    self.render()
+                    self.applyLaunchAtLogin(self.prefs.launchAtLogin)
+                }
+            }
+            .store(in: &cancellables)
 
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(didWake),
             name: NSWorkspace.didWakeNotification, object: nil
         )
 
-        timer = Timer.scheduledTimer(withTimeInterval: refreshInterval, repeats: true) { [weak self] _ in
-            self?.refresh()
-        }
-        timer?.tolerance = 5
         refresh()
     }
 
@@ -56,134 +58,209 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         sessionItem = NSMenuItem(title: "Loading…", action: nil, keyEquivalent: "")
         weeklyItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        sessionItem.isEnabled = false
+        weeklyItem.isEnabled = false
         menu.addItem(sessionItem)
         menu.addItem(weeklyItem)
+        menu.addItem(.separator())
 
-        let settingsMenu = NSMenu()
-        settingsMenu.autoenablesItems = false
-
-        launchAtLoginItem = NSMenuItem(
-            title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: ""
-        )
-        launchAtLoginItem.target = self
-        settingsMenu.addItem(launchAtLoginItem)
-
-        notificationsItem = NSMenuItem(
-            title: "Notifications", action: #selector(toggleNotifications), keyEquivalent: ""
-        )
-        notificationsItem.target = self
-        settingsMenu.addItem(notificationsItem)
-
-        let refreshItem = NSMenuItem(title: "Refresh Now", action: #selector(refreshNow), keyEquivalent: "r")
-        refreshItem.target = self
-        settingsMenu.addItem(refreshItem)
-
-        settingsMenu.addItem(.separator())
-
-        let quitItem = NSMenuItem(
-            title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"
-        )
-        settingsMenu.addItem(quitItem)
-
-        let settingsItem = NSMenuItem(title: "Settings", action: nil, keyEquivalent: "")
-        menu.addItem(settingsItem)
-        menu.setSubmenu(settingsMenu, for: settingsItem)
-
+        add(menu, "Refresh Now", #selector(refreshNow), key: "r")
+        add(menu, "Settings…", #selector(openSettings), key: ",")
+        menu.addItem(.separator())
+        add(menu, "Quit Claude Usage Tracker", #selector(NSApplication.terminate(_:)), key: "q")
         return menu
     }
 
-    /// Keep checkmarks current; login item status can change in System Settings.
-    func menuWillOpen(_ menu: NSMenu) {
-        notificationsItem.state = notificationsEnabled ? .on : .off
-        if isRunningFromAppBundle {
-            launchAtLoginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
+    private func add(_ menu: NSMenu, _ title: String, _ action: Selector, key: String) {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        item.target = self
+        menu.addItem(item)
+    }
+
+    // MARK: - Rendering
+
+    private func render() {
+        statusItem.button?.attributedTitle = menuBarTitle(for: state.snapshot)
+        if let snapshot = state.snapshot {
+            sessionItem.title = "Session   " + UsageFormatter.sessionLine(snapshot)
+            weeklyItem.title  = "Weekly    " + UsageFormatter.weeklyLine(snapshot)
         } else {
-            launchAtLoginItem.isEnabled = false
+            sessionItem.title = statusLineWhenNoData()
+            weeklyItem.title = ""
         }
     }
 
-    // MARK: - Refresh
+    private func statusLineWhenNoData() -> String {
+        switch auth.source {
+        case .none: return "Not connected — open Settings to log in"
+        default: return state.lastError ?? "Loading…"
+        }
+    }
+
+    private func menuBarTitle(for snapshot: UsageSnapshot?) -> NSAttributedString {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        guard let snapshot else {
+            return NSAttributedString(string: "–% / –%",
+                attributes: [.font: font, .foregroundColor: NSColor.labelColor])
+        }
+        let result = NSMutableAttributedString()
+        result.append(part(snapshot.session, customHex: prefs.sessionColorHex, font: font))
+        result.append(NSAttributedString(string: "  /  ",
+            attributes: [.font: font, .foregroundColor: NSColor.labelColor]))
+        result.append(part(snapshot.weekly, customHex: prefs.weeklyColorHex, font: font))
+        return result
+    }
+
+    private func part(_ window: UsageWindow?, customHex: String, font: NSFont) -> NSAttributedString {
+        let pct = Int((window?.utilization ?? 0).rounded())
+        let level = UsageLevel(utilization: window?.utilization, thresholdsEnabled: prefs.thresholdsEnabled)
+        return NSAttributedString(string: "\(pct)%", attributes: [
+            .font: font,
+            .foregroundColor: AppColors.color(level: level, customHex: customHex),
+        ])
+    }
+
+    /// Refresh the cached source/line text when the menu is about to show.
+    func menuWillOpen(_ menu: NSMenu) {
+        state.source = auth.source
+        if state.snapshot == nil { render() }
+    }
+
+    // MARK: - Polling
 
     @objc private func refreshNow() { refresh() }
 
     @objc private func didWake() {
-        // Give the network a moment to come back up.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
-            self?.refresh()
-        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in self?.refresh() }
     }
 
     private func refresh() {
+        state.isRefreshing = true
         Task { [weak self] in
             guard let self else { return }
             do {
-                let snapshot = try await self.client.fetchUsage()
-                await MainActor.run { self.apply(snapshot) }
+                let token = try await self.tokenWithRetry()
+                let snapshot = try await self.client.fetchUsage(accessToken: token)
+                await MainActor.run { self.onSuccess(snapshot) }
             } catch {
-                await MainActor.run { self.applyError(error) }
+                await MainActor.run { self.onFailure(error) }
             }
         }
     }
 
-    private func apply(_ snapshot: UsageSnapshot) {
-        lastSnapshot = snapshot
-        statusItem.button?.title = UsageFormatter.menuBarTitle(snapshot)
-        sessionItem.title = UsageFormatter.sessionLine(snapshot)
-        weeklyItem.title = UsageFormatter.weeklyLine(snapshot)
-        notifications.process(snapshot: snapshot, notificationsEnabled: notificationsEnabled)
+    /// Fetch a token, and on a 401 force a refresh/re-read once before giving up.
+    private func tokenWithRetry() async throws -> String {
+        let token = try await auth.accessToken()
+        return token
     }
 
-    private func applyError(_ error: Error) {
+    private func onSuccess(_ snapshot: UsageSnapshot) {
+        state.snapshot = snapshot
+        state.lastRefreshed = Date()
+        state.lastError = nil
+        state.isRefreshing = false
+        state.source = auth.source
+        consecutiveFailures = 0
+        render()
+        scheduleNextPoll(after: prefs.refreshInterval)
+    }
+
+    private func onFailure(_ error: Error) {
         AppLog.log("Usage refresh failed: \(error)")
-        // Keep showing the last known data; only surface errors when there is none.
-        guard lastSnapshot == nil else { return }
-        statusItem.button?.title = UsageFormatter.menuBarTitle(nil)
+        state.isRefreshing = false
+        state.source = auth.source
+        consecutiveFailures += 1
+
+        // On an auth failure, try once more after forcing a token refresh/re-read.
+        if case UsageClientError.unauthorized = error, consecutiveFailures == 1 {
+            Task { [weak self] in
+                guard let self else { return }
+                do {
+                    let token = try await self.auth.accessToken(forceRefresh: true)
+                    let snapshot = try await self.client.fetchUsage(accessToken: token)
+                    await MainActor.run { self.onSuccess(snapshot) }
+                } catch {
+                    await MainActor.run { self.finishFailure(error) }
+                }
+            }
+            return
+        }
+        finishFailure(error)
+    }
+
+    private func finishFailure(_ error: Error) {
+        state.lastError = friendlyError(error)
+        render()
+
+        var delay = backoffDelay()
+        if case UsageClientError.rateLimited(let retryAfter) = error, let retryAfter {
+            delay = max(delay, retryAfter)
+        }
+        scheduleNextPoll(after: delay)
+    }
+
+    private func backoffDelay() -> TimeInterval {
+        let base = prefs.refreshInterval
+        let scaled = base * pow(2, Double(min(consecutiveFailures, 6)))
+        return min(scaled, maxBackoff)
+    }
+
+    private func friendlyError(_ error: Error) -> String {
         switch error {
-        case UsageClientError.keychainItemNotFound, UsageClientError.malformedCredentials:
-            sessionItem.title = "Claude Code not logged in"
-        case UsageClientError.unauthorized:
-            sessionItem.title = "Token expired — use Claude Code"
-        default:
-            sessionItem.title = "Offline — retrying every minute"
-        }
-        weeklyItem.title = ""
-    }
-
-    // MARK: - Settings actions
-
-    @objc private func toggleNotifications() {
-        notificationsEnabled.toggle()
-        // Re-run the decider so pending notifications are scheduled or cancelled.
-        if let lastSnapshot {
-            notifications.process(snapshot: lastSnapshot, notificationsEnabled: notificationsEnabled)
+        case AuthError.notLoggedIn: return "Not connected — log in via Settings"
+        case UsageClientError.unauthorized: return "Token expired — log in again or use Claude Code"
+        case UsageClientError.rateLimited: return "Rate limited — backing off"
+        default: return "\(error)"
         }
     }
 
-    @objc private func toggleLaunchAtLogin() {
-        guard isRunningFromAppBundle else { return }
+    private func scheduleNextPoll(after delay: TimeInterval) {
+        pollWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.refresh() }
+        pollWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    // MARK: - Settings window
+
+    @objc private func openSettings() {
+        if settingsWindow == nil {
+            let view = SettingsView(
+                prefs: prefs, state: state, auth: auth,
+                onRefreshNow: { [weak self] in self?.refresh() },
+                onPrefsChanged: { [weak self] in
+                    self?.render()
+                    self?.applyLaunchAtLogin(self?.prefs.launchAtLogin ?? true)
+                }
+            )
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 460, height: 360),
+                styleMask: [.titled, .closable], backing: .buffered, defer: false
+            )
+            window.title = "Claude Usage Tracker"
+            window.contentViewController = NSHostingController(rootView: view)
+            window.isReleasedWhenClosed = false
+            window.center()
+            settingsWindow = window
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        settingsWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    // MARK: - Launch at login
+
+    private func applyLaunchAtLogin(_ enabled: Bool) {
+        guard Bundle.main.bundleURL.pathExtension == "app" else { return }
         let service = SMAppService.mainApp
         do {
-            if service.status == .enabled {
-                try service.unregister()
-            } else {
+            let isEnabled = service.status == .enabled
+            if enabled && !isEnabled {
                 try service.register()
+            } else if !enabled && isEnabled {
+                try service.unregister()
             }
         } catch {
-            AppLog.log("Launch at login toggle failed: \(error)")
-        }
-    }
-
-    /// User chose auto-start at login; register once on first launch from /Applications.
-    private func registerLaunchAtLoginOnFirstRun() {
-        guard isRunningFromAppBundle,
-              Bundle.main.bundlePath.hasPrefix("/Applications/"),
-              !defaults.bool(forKey: "didRegisterLoginItem")
-        else { return }
-        do {
-            try SMAppService.mainApp.register()
-            defaults.set(true, forKey: "didRegisterLoginItem")
-        } catch {
-            AppLog.log("Initial launch-at-login registration failed: \(error)")
+            AppLog.log("Launch at login update failed: \(error)")
         }
     }
 }
