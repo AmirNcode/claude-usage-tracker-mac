@@ -36,6 +36,8 @@ and tune the refresh rate.
   turns **orange at 90%** and **red at 100%** so you notice before you run out.
 - 🔌 **Connect your Claude account** with a browser login, or let it read
   [Claude Code](https://claude.com/claude-code)'s session automatically if it's installed.
+- 📈 **Usage stats** — a Stats window with a timeline chart and a change-by-change
+  log, so you can see how your prompting moves the needle.
 - 🪶 **Native and lightweight** — Swift + AppKit/SwiftUI, no Electron, ~1 MB, negligible memory.
 - 🚀 **Launch at login**, configurable refresh interval, and a clean Settings window.
 
@@ -47,10 +49,28 @@ Clicking the menu bar item shows:
 Session   58% - 16:29       ← used % and when the 5-hour window resets (local time)
 Weekly    6%  - Mon 05:59   ← used % and when the weekly window resets (local time)
 ──────────────
+Stats…
 Refresh Now
 Settings…
 Quit
 ```
+
+## Usage stats
+
+<div align="center">
+<img src="docs/images/stats.png" width="460" alt="Usage Stats window with a timeline chart and change log" />
+</div>
+
+**Stats…** opens a window with a line chart of session/weekly usage over time, plus
+a timeline that logs each change — e.g. `Jun 15 13:16 — Session 94% (+78) · Weekly
+9% (±0)`. While the window is open the app samples more often so prompt-driven jumps
+show up quickly.
+
+> [!NOTE]
+> The usage endpoint only reports the **aggregate** session/weekly percentages —
+> there's no per-message breakdown. So Stats shows *when usage changed and by how
+> much*, which you can line up with what you were doing; it can't attribute a jump
+> to one specific prompt. History is stored locally for the last 14 days.
 
 ## Install
 

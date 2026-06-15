@@ -4,17 +4,23 @@ import ServiceManagement
 import SwiftUI
 import UsageCore
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate {
     private let prefs = Preferences.shared
     private let state = AppState()
     private let auth = AuthManager()
     private let client = UsageClient()
+    private let history = UsageHistoryStore()
 
     private var statusItem: NSStatusItem!
     private var sessionItem: NSMenuItem!
     private var weeklyItem: NSMenuItem!
     private var settingsWindow: NSWindow?
+    private var statsWindow: NSWindow?
     private var cancellables = Set<AnyCancellable>()
+
+    // While the Stats window is open, sample more often so prompt-driven jumps show.
+    private let statsOpenInterval: TimeInterval = 60
+    private var statsWindowOpen = false
 
     // Variable-interval polling with exponential backoff on failure.
     private var pollWorkItem: DispatchWorkItem?
@@ -47,6 +53,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
 
         refresh()
+
+        // Dev affordance for verification: `--open-stats` shows the Stats window
+        // immediately (no menu interaction needed).
+        if CommandLine.arguments.contains("--open-stats") {
+            DispatchQueue.main.async { [weak self] in
+                self?.openStats()
+                self?.statsWindow?.level = .floating // float above other apps for capture
+            }
+        }
     }
 
     // MARK: - Menu
@@ -64,6 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(weeklyItem)
         menu.addItem(.separator())
 
+        add(menu, "Stats…", #selector(openStats), key: "s")
         add(menu, "Refresh Now", #selector(refreshNow), key: "r")
         add(menu, "Settings…", #selector(openSettings), key: ",")
         menu.addItem(.separator())
@@ -160,9 +176,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         state.lastError = nil
         state.isRefreshing = false
         state.source = auth.source
+        history.record(snapshot)
         consecutiveFailures = 0
         render()
-        scheduleNextPoll(after: prefs.refreshInterval)
+        scheduleNextPoll(after: normalInterval())
+    }
+
+    /// Poll faster while the Stats window is open (short bursts only).
+    private func normalInterval() -> TimeInterval {
+        statsWindowOpen ? min(statsOpenInterval, prefs.refreshInterval) : prefs.refreshInterval
     }
 
     private func onFailure(_ error: Error) {
@@ -192,7 +214,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         state.lastError = friendlyError(error)
         render()
 
-        var delay = backoffDelay()
+        var delay = max(backoffDelay(), normalInterval())
         if case UsageClientError.rateLimited(let retryAfter) = error, let retryAfter {
             delay = max(delay, retryAfter)
         }
@@ -245,6 +267,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    @objc private func openStats() {
+        if statsWindow == nil {
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 520, height: 460),
+                styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false
+            )
+            window.title = "Usage Stats"
+            window.contentViewController = NSHostingController(rootView: StatsView(store: history))
+            window.isReleasedWhenClosed = false
+            window.delegate = self
+            window.center()
+            statsWindow = window
+        }
+        statsWindowOpen = true
+        NSApp.activate(ignoringOtherApps: true)
+        statsWindow?.makeKeyAndOrderFront(nil)
+        refresh() // immediate sample, then faster cadence while open
+    }
+
+    // NSWindowDelegate: return to the normal poll cadence when Stats closes.
+    func windowWillClose(_ notification: Notification) {
+        if (notification.object as? NSWindow) == statsWindow {
+            statsWindowOpen = false
+            scheduleNextPoll(after: prefs.refreshInterval)
+        }
     }
 
     // MARK: - Launch at login
