@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 5.9
 import PackageDescription
 
 let package = Package(
@@ -7,22 +7,19 @@ let package = Package(
     targets: [
         .target(
             name: "UsageCore",
-            path: "Sources/UsageCore",
-            swiftSettings: [.swiftLanguageMode(.v5)]
+            path: "Sources/UsageCore"
         ),
         .executableTarget(
             name: "ClaudeUsageTracker",
             dependencies: ["UsageCore"],
-            path: "Sources/ClaudeUsageTracker",
-            swiftSettings: [.swiftLanguageMode(.v5)]
+            path: "Sources/ClaudeUsageTracker"
         ),
-        // Assertion-based test runner (the CLT-only toolchain on this machine has
-        // no XCTest/Swift Testing); run with `swift run UsageCoreTests` or `make test`.
+        // Assertion-based test runner (the CLT-only toolchain on the build machine
+        // ships no XCTest/Swift Testing); run with `swift run UsageCoreTests`.
         .executableTarget(
             name: "UsageCoreTests",
             dependencies: ["UsageCore"],
-            path: "Tests/UsageCoreTests",
-            swiftSettings: [.swiftLanguageMode(.v5)]
+            path: "Tests/UsageCoreTests"
         ),
     ]
 )
