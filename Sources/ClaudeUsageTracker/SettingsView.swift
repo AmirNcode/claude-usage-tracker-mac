@@ -29,36 +29,19 @@ struct SettingsView: View {
     }
 
     @State private var selection: Pane? = .account
-    // Defaults visible; `--start-collapsed` is a dev affordance for verification.
-    @State private var sidebarVisible = !CommandLine.arguments.contains("--start-collapsed")
 
     var body: some View {
-        // A custom split (rather than NavigationSplitView) so the toggle button
-        // stays pinned to the top-right and there's no toolbar divider that shifts
-        // when the sidebar collapses.
-        NavigationStack {
-            HStack(spacing: 0) {
-                if sidebarVisible {
-                    List(Pane.allCases, selection: $selection) { pane in
-                        Label(pane.rawValue, systemImage: pane.icon).tag(pane)
-                    }
-                    .listStyle(.sidebar)
-                    .frame(width: 190)
-                    .transition(.move(edge: .leading))
-                }
-                detail
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Permanent left panel + detail. No collapse control: the sidebar is
+        // always shown.
+        HStack(spacing: 0) {
+            List(Pane.allCases, selection: $selection) { pane in
+                Label(pane.rawValue, systemImage: pane.icon).tag(pane)
             }
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) { sidebarVisible.toggle() }
-                    } label: {
-                        Image(systemName: "sidebar.left")
-                    }
-                    .help(sidebarVisible ? "Hide Sidebar" : "Show Sidebar")
-                }
-            }
+            .listStyle(.sidebar)
+            .frame(width: 190)
+
+            detail
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(width: 620, height: 400)
     }

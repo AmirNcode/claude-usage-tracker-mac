@@ -122,8 +122,8 @@ The app needs a Claude token to read usage. It tries, in order:
 
 ## Settings
 
-Settings open in a window with a left sidebar; a single button in the top-right
-corner shows or hides the sidebar.
+Settings open in a window with a permanent left sidebar for navigating between
+sections.
 
 | Section | Options |
 |---------|---------|
