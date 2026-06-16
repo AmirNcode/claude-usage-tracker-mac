@@ -11,14 +11,41 @@ struct SettingsView: View {
     private let repoURL = URL(string: "https://github.com/AmirNcode/claude-usage-tracker-mac")!
     private let issuesURL = URL(string: "https://github.com/AmirNcode/claude-usage-tracker-mac/issues")!
 
-    var body: some View {
-        TabView {
-            accountTab.tabItem { Label("Account", systemImage: "person.crop.circle") }
-            appearanceTab.tabItem { Label("Appearance", systemImage: "paintpalette") }
-            generalTab.tabItem { Label("General", systemImage: "gearshape") }
-            aboutTab.tabItem { Label("About", systemImage: "info.circle") }
+    enum Pane: String, CaseIterable, Identifiable {
+        case account = "Account"
+        case appearance = "Appearance"
+        case general = "General"
+        case about = "About"
+
+        var id: String { rawValue }
+        var icon: String {
+            switch self {
+            case .account: return "person.crop.circle"
+            case .appearance: return "paintpalette"
+            case .general: return "gearshape"
+            case .about: return "info.circle"
+            }
         }
-        .frame(width: 460, height: 360)
+    }
+
+    @State private var selection: Pane? = .account
+
+    var body: some View {
+        NavigationSplitView {
+            List(Pane.allCases, selection: $selection) { pane in
+                Label(pane.rawValue, systemImage: pane.icon).tag(pane)
+            }
+            .navigationSplitViewColumnWidth(min: 150, ideal: 168, max: 200)
+        } detail: {
+            switch selection ?? .account {
+            case .account: accountTab
+            case .appearance: appearanceTab
+            case .general: generalTab
+            case .about: aboutTab
+            }
+        }
+        .navigationSplitViewStyle(.balanced)
+        .frame(width: 620, height: 400)
     }
 
     // MARK: - Account
