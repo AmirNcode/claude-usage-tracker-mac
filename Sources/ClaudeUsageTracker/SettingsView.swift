@@ -29,23 +29,47 @@ struct SettingsView: View {
     }
 
     @State private var selection: Pane? = .account
+    // Defaults visible; `--start-collapsed` is a dev affordance for verification.
+    @State private var sidebarVisible = !CommandLine.arguments.contains("--start-collapsed")
 
     var body: some View {
-        NavigationSplitView {
-            List(Pane.allCases, selection: $selection) { pane in
-                Label(pane.rawValue, systemImage: pane.icon).tag(pane)
+        // A custom split (rather than NavigationSplitView) so the toggle button
+        // stays pinned to the top-right and there's no toolbar divider that shifts
+        // when the sidebar collapses.
+        NavigationStack {
+            HStack(spacing: 0) {
+                if sidebarVisible {
+                    List(Pane.allCases, selection: $selection) { pane in
+                        Label(pane.rawValue, systemImage: pane.icon).tag(pane)
+                    }
+                    .listStyle(.sidebar)
+                    .frame(width: 190)
+                    .transition(.move(edge: .leading))
+                }
+                detail
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .navigationSplitViewColumnWidth(min: 150, ideal: 168, max: 200)
-        } detail: {
-            switch selection ?? .account {
-            case .account: accountTab
-            case .appearance: appearanceTab
-            case .general: generalTab
-            case .about: aboutTab
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { sidebarVisible.toggle() }
+                    } label: {
+                        Image(systemName: "sidebar.left")
+                    }
+                    .help(sidebarVisible ? "Hide Sidebar" : "Show Sidebar")
+                }
             }
         }
-        .navigationSplitViewStyle(.balanced)
         .frame(width: 620, height: 400)
+    }
+
+    @ViewBuilder private var detail: some View {
+        switch selection ?? .account {
+        case .account: accountTab
+        case .appearance: appearanceTab
+        case .general: generalTab
+        case .about: aboutTab
+        }
     }
 
     // MARK: - Account

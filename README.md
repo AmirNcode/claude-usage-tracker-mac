@@ -122,8 +122,11 @@ The app needs a Claude token to read usage. It tries, in order:
 
 ## Settings
 
-| Tab | Options |
-|-----|---------|
+Settings open in a window with a left sidebar; a single button in the top-right
+corner shows or hides the sidebar.
+
+| Section | Options |
+|---------|---------|
 | **Account** | Connection status, last refreshed time, last error, Log in / Log out |
 | **Appearance** | Threshold highlighting (orange ≥90%, red ≥100%), custom colors for session & weekly % |
 | **General** | Launch at login, refresh interval (1–15 min), Refresh now |
