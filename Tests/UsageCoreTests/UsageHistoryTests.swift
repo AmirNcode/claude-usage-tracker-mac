@@ -119,4 +119,42 @@ func runUsageHistoryTests() {
     test("windowed returns nothing for no samples") {
         expect(UsageHistory.windowed([], window: 3600, now: t0).isEmpty, "expected no points")
     }
+
+    test("inserting places a sample in date order") {
+        let samples = [
+            UsageSample(date: at(0), session: 1, weekly: 1),
+            UsageSample(date: at(200), session: 3, weekly: 3),
+        ]
+        let middle = UsageSample(date: at(100), session: 2, weekly: 2)
+        let result = UsageHistory.inserting(middle, into: samples, maxAge: 3600, now: at(200))
+        expectEqual(result.count, 3)
+        expectEqual(result[1].date, at(100))
+        expectEqual(result[1].session, 2)
+    }
+
+    test("inserting replaces a sample at the same timestamp") {
+        let samples = [UsageSample(date: at(0), session: 1, weekly: 1)]
+        let replacement = UsageSample(date: at(0), session: 99, weekly: nil)
+        let result = UsageHistory.inserting(replacement, into: samples, maxAge: 3600, now: at(0))
+        expectEqual(result.count, 1)
+        expectEqual(result[0].session, 99)
+        expect(result[0].weekly == nil, "replacement's nil weekly should win")
+    }
+
+    test("inserting prunes samples older than maxAge") {
+        let samples = [UsageSample(date: at(0), session: 1, weekly: 1)]
+        let fresh = UsageSample(date: at(7200), session: 2, weekly: 2)
+        let result = UsageHistory.inserting(fresh, into: samples, maxAge: 3600, now: at(7200))
+        expectEqual(result.count, 1)
+        expectEqual(result[0].session, 2)
+    }
+
+    test("inserting appends when the sample is newest") {
+        let samples = [UsageSample(date: at(0), session: 1, weekly: 1)]
+        let result = UsageHistory.inserting(
+            UsageSample(date: at(600), session: 5, weekly: 5), into: samples,
+            maxAge: 3600, now: at(600))
+        expectEqual(result.count, 2)
+        expectEqual(result.last?.date, at(600))
+    }
 }

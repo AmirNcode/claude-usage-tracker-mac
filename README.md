@@ -86,6 +86,20 @@ the full history, regardless of the selected range.
 > much*, which you can line up with what you were doing; it can't attribute a jump
 > to one specific prompt. History is stored locally for the last 14 days.
 
+### Fixing a gap
+
+If the app was asleep, logged out, or rate-limited for a while, it records nothing
+for that stretch and the chart draws a straight line from the last reading to the
+next one — which can look like a slow decline that never happened. **Settings → Data**
+fixes it two ways:
+
+- **Manual entry** — pick a time, type the session and/or weekly percentage, and it
+  lands in the history at that point. Use it to mark what the app missed, e.g. the
+  `Session 0%` at the moment your 5-hour window reset. Blank fields leave that
+  series unset; the menu bar is untouched and keeps showing live values.
+- **Reset charts** — erases all stored readings and restarts from the current one,
+  for when the history is too tangled to patch.
+
 ## Install
 
 ### Download (recommended)
@@ -144,6 +158,7 @@ sections.
 | **Account** | Connection status, last refreshed time, last error, Log in / Log out |
 | **Appearance** | Threshold highlighting (orange ≥90%, red ≥100%), custom colors for session & weekly % |
 | **General** | Launch at login, refresh interval (1–15 min), Refresh now |
+| **Data** | Manual entry (backfill a reading at a chosen time), Reset charts |
 | **About** | Version, links to this repo and the issue tracker |
 
 ## How it works

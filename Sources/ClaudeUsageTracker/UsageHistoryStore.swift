@@ -28,6 +28,27 @@ final class UsageHistoryStore: ObservableObject {
         save()
     }
 
+    /// Erase all history and start over from the current reading (nothing is
+    /// seeded when there is no snapshot yet). Settings → Data → Reset charts.
+    func reset(seeding snapshot: UsageSnapshot?, at date: Date = Date()) {
+        if let snapshot {
+            samples = [UsageSample(date: date,
+                                   session: snapshot.session?.utilization,
+                                   weekly: snapshot.weekly?.utilization)]
+        } else {
+            samples = []
+        }
+        save()
+    }
+
+    /// Add a hand-entered reading at `date`, replacing any sample already at that
+    /// exact time. A nil percentage leaves that series unset for this point.
+    func addManual(session: Double?, weekly: Double?, at date: Date, now: Date = Date()) {
+        let sample = UsageSample(date: date, session: session, weekly: weekly)
+        samples = UsageHistory.inserting(sample, into: samples, maxAge: maxAge, now: now)
+        save()
+    }
+
     var timeline: [TimelineEntry] { UsageHistory.timeline(samples) }
 
     private func load() {

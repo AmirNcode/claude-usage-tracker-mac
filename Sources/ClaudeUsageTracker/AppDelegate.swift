@@ -254,7 +254,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     @objc private func openSettings() {
         if settingsWindow == nil {
             let view = SettingsView(
-                prefs: prefs, state: state, auth: auth,
+                prefs: prefs, state: state, history: history, auth: auth,
                 onRefreshNow: { [weak self] in self?.refresh() },
                 onPrefsChanged: { [weak self] in
                     self?.render()

@@ -4,6 +4,7 @@ import UsageCore
 struct SettingsView: View {
     @ObservedObject var prefs: Preferences
     @ObservedObject var state: AppState
+    @ObservedObject var history: UsageHistoryStore
     let auth: AuthManager
     var onRefreshNow: () -> Void
     var onPrefsChanged: () -> Void
@@ -15,6 +16,7 @@ struct SettingsView: View {
         case account = "Account"
         case appearance = "Appearance"
         case general = "General"
+        case data = "Data"
         case about = "About"
 
         var id: String { rawValue }
@@ -23,6 +25,7 @@ struct SettingsView: View {
             case .account: return "person.crop.circle"
             case .appearance: return "paintpalette"
             case .general: return "gearshape"
+            case .data: return "chart.xyaxis.line"
             case .about: return "info.circle"
             }
         }
@@ -51,6 +54,7 @@ struct SettingsView: View {
         case .account: accountTab
         case .appearance: appearanceTab
         case .general: generalTab
+        case .data: dataTab
         case .about: aboutTab
         }
     }
@@ -176,6 +180,86 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .onChange(of: prefs.launchAtLogin) { onPrefsChanged() }
         .onChange(of: prefs.refreshMinutes) { onPrefsChanged() }
+    }
+
+    // MARK: - Data
+
+    @State private var manualDate = Date()
+    @State private var manualSession = ""
+    @State private var manualWeekly = ""
+    @State private var manualStatus: String?
+    @State private var manualStatusIsError = false
+    @State private var confirmReset = false
+
+    private var dataTab: some View {
+        Form {
+            Section("Manual entry") {
+                Text("Record a reading the app missed — a session reset it slept through, or a stretch where it couldn't authenticate. Pick the time it happened; the chart redraws around it.")
+                    .font(.callout).foregroundStyle(.secondary)
+                DatePicker("Time", selection: $manualDate,
+                           in: ...Date(), displayedComponents: [.date, .hourAndMinute])
+                TextField("Session %", text: $manualSession)
+                TextField("Weekly %", text: $manualWeekly)
+                HStack {
+                    Button("Add to history") { addManualSample() }
+                        .disabled(manualSession.isEmpty && manualWeekly.isEmpty)
+                    if let manualStatus {
+                        Text(manualStatus).font(.caption)
+                            .foregroundStyle(manualStatusIsError ? Color.red : .secondary)
+                    }
+                }
+                Text("Leave a field blank to leave that series unset at this point. History only — the menu bar keeps showing live values.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            Section("Reset") {
+                Button("Reset charts…", role: .destructive) { confirmReset = true }
+                Text("Erases the \(history.samples.count) stored readings and starts over from the current one. Use it when a sync gap has left the chart drawing a line across data it never collected.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            Section {
+                Text("History lives in ~/Library/Application Support/ClaudeUsageTracker/history.json and is pruned to the last 14 days.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .alert("Reset usage charts?", isPresented: $confirmReset) {
+            Button("Reset", role: .destructive) { resetCharts() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This deletes all \(history.samples.count) recorded readings. It can't be undone.")
+        }
+    }
+
+    private func resetCharts() {
+        history.reset(seeding: state.snapshot)
+        manualStatus = nil
+        onRefreshNow()
+    }
+
+    private func addManualSample() {
+        guard let session = Self.percentage(manualSession),
+              let weekly = Self.percentage(manualWeekly) else {
+            manualStatus = "Enter percentages between 0 and 100."
+            manualStatusIsError = true
+            return
+        }
+        history.addManual(session: session, weekly: weekly, at: manualDate)
+        manualSession = ""
+        manualWeekly = ""
+        manualStatusIsError = false
+        manualStatus = "Added."
+    }
+
+    /// Parses a percentage field: blank is a valid "unset" (.some(nil)); anything
+    /// outside 0–100 or unparseable is rejected (nil).
+    private static func percentage(_ text: String) -> Double?? {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: "%", with: "")
+        if trimmed.isEmpty { return .some(nil) }
+        guard let value = Double(trimmed), (0...100).contains(value) else { return nil }
+        return .some(value)
     }
 
     // MARK: - About

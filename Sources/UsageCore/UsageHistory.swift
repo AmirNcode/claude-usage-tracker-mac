@@ -39,6 +39,20 @@ public enum UsageHistory {
         return last.session == sample.session && last.weekly == sample.weekly
     }
 
+    /// Insert a sample in date order, replacing any sample already at that exact
+    /// timestamp, then prune anything older than `maxAge`. Manual entry uses this
+    /// to backfill a reading the app missed (e.g. a session reset it slept through).
+    public static func inserting(
+        _ sample: UsageSample, into samples: [UsageSample],
+        maxAge: TimeInterval, now: Date = Date()
+    ) -> [UsageSample] {
+        var result = samples.filter { $0.date != sample.date }
+        let index = result.firstIndex { $0.date > sample.date } ?? result.count
+        result.insert(sample, at: index)
+        let cutoff = now.addingTimeInterval(-maxAge)
+        return result.filter { $0.date >= cutoff }
+    }
+
     /// Samples inside the trailing `window` ending at `now`, padded at both ends
     /// so a flat stretch still draws a line: the last reading before the window
     /// is carried in at the window start, and the latest reading is carried
