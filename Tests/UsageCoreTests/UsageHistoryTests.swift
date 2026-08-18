@@ -83,4 +83,40 @@ func runUsageHistoryTests() {
         expect(restored[1].session == nil, "nil session should survive round-trip")
         expectEqual(restored[1].weekly, 21)
     }
+
+    test("windowed keeps only samples inside the window") {
+        let samples = [
+            UsageSample(date: at(0), session: 1, weekly: 1),
+            UsageSample(date: at(7000), session: 2, weekly: 2),
+            UsageSample(date: at(7200), session: 3, weekly: 3),
+        ]
+        // window 3600s ending at at(7200): keeps at(7000) and at(7200), carries in at(0).
+        let result = UsageHistory.windowed(samples, window: 3600, now: at(7200))
+        expectEqual(result.count, 3)
+        expectEqual(result[0].date, at(3600))
+        expectEqual(result[0].session, 1)
+        expectEqual(result[2].session, 3)
+    }
+
+    test("windowed carries the last value forward to now") {
+        let samples = [UsageSample(date: at(0), session: 40, weekly: 60)]
+        let result = UsageHistory.windowed(samples, window: 3600, now: at(1800))
+        expectEqual(result.count, 2)
+        expectEqual(result[1].date, at(1800))
+        expectEqual(result[1].session, 40)
+        expectEqual(result[1].weekly, 60)
+    }
+
+    test("windowed spans the window when every sample predates it") {
+        let samples = [UsageSample(date: at(0), session: 40, weekly: 60)]
+        let result = UsageHistory.windowed(samples, window: 3600, now: at(10_000))
+        expectEqual(result.count, 2)
+        expectEqual(result[0].date, at(6400))
+        expectEqual(result[1].date, at(10_000))
+        expectEqual(result[0].session, 40)
+    }
+
+    test("windowed returns nothing for no samples") {
+        expect(UsageHistory.windowed([], window: 3600, now: t0).isEmpty, "expected no points")
+    }
 }

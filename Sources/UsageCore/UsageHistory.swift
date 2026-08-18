@@ -39,6 +39,25 @@ public enum UsageHistory {
         return last.session == sample.session && last.weekly == sample.weekly
     }
 
+    /// Samples inside the trailing `window` ending at `now`, padded at both ends
+    /// so a flat stretch still draws a line: the last reading before the window
+    /// is carried in at the window start, and the latest reading is carried
+    /// forward to `now`. Samples are only recorded when a value changes, so an
+    /// unchanged reading is the correct value for the gap between them.
+    public static func windowed(
+        _ samples: [UsageSample], window: TimeInterval, now: Date = Date()
+    ) -> [UsageSample] {
+        let start = now.addingTimeInterval(-window)
+        var result = samples.filter { $0.date >= start && $0.date <= now }
+        if let carryIn = samples.last(where: { $0.date < start }) {
+            result.insert(UsageSample(date: start, session: carryIn.session, weekly: carryIn.weekly), at: 0)
+        }
+        if let last = result.last, last.date < now {
+            result.append(UsageSample(date: now, session: last.session, weekly: last.weekly))
+        }
+        return result
+    }
+
     /// Chronological entries with deltas versus the previous sample. The delta is
     /// nil for the first entry or when either side's percentage is missing.
     public static func timeline(_ samples: [UsageSample]) -> [TimelineEntry] {

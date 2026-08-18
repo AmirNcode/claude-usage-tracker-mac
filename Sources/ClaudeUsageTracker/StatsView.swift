@@ -39,8 +39,51 @@ struct StatsView: View {
         let series: String
     }
 
-    private var plotData: [Plot] {
-        store.samples.flatMap { s -> [Plot] in
+    /// Time span the chart covers, ending at now.
+    private enum ChartRange: String, CaseIterable, Identifiable {
+        case fiveHours, day, week
+
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .fiveHours: return "5 hours"
+            case .day: return "24 hours"
+            case .week: return "Week"
+            }
+        }
+
+        var duration: TimeInterval {
+            switch self {
+            case .fiveHours: return 5 * 3600
+            case .day: return 24 * 3600
+            case .week: return 7 * 24 * 3600
+            }
+        }
+
+        /// Axis tick spacing: enough labels to read the span, few enough to fit.
+        var tick: (component: Calendar.Component, count: Int) {
+            switch self {
+            case .fiveHours: return (.hour, 1)
+            case .day: return (.hour, 4)
+            case .week: return (.day, 1)
+            }
+        }
+
+        var axisFormat: Date.FormatStyle {
+            switch self {
+            case .fiveHours, .day: return .dateTime.hour().minute()
+            case .week: return .dateTime.month(.abbreviated).day()
+            }
+        }
+    }
+
+    @AppStorage("statsChartRange") private var rangeRaw = ChartRange.week.rawValue
+
+    private var range: ChartRange { ChartRange(rawValue: rangeRaw) ?? .week }
+
+    private func plotData(now: Date) -> [Plot] {
+        UsageHistory.windowed(store.samples, window: range.duration, now: now).flatMap { s -> [Plot] in
             var points: [Plot] = []
             if let v = s.session { points.append(Plot(date: s.date, value: v, series: "Session")) }
             if let v = s.weekly { points.append(Plot(date: s.date, value: v, series: "Weekly")) }
@@ -49,9 +92,19 @@ struct StatsView: View {
     }
 
     private var chart: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Usage over time").font(.headline)
-            Chart(plotData) { p in
+        let now = Date()
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Usage over time").font(.headline)
+                Spacer()
+                Picker("Range", selection: $rangeRaw) {
+                    ForEach(ChartRange.allCases) { r in Text(r.label).tag(r.rawValue) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 240)
+            }
+            Chart(plotData(now: now)) { p in
                 LineMark(
                     x: .value("Time", p.date),
                     y: .value("Used %", p.value)
@@ -59,9 +112,17 @@ struct StatsView: View {
                 .foregroundStyle(by: .value("Window", p.series))
                 .interpolationMethod(.monotone)
             }
+            .chartXScale(domain: now.addingTimeInterval(-range.duration)...now)
             .chartYScale(domain: 0...100)
             .chartForegroundStyleScale(["Session": Color.accentColor, "Weekly": Color.orange])
             .chartYAxis { AxisMarks(values: [0, 25, 50, 75, 100]) }
+            .chartXAxis {
+                AxisMarks(values: .stride(by: range.tick.component, count: range.tick.count)) {
+                    AxisGridLine()
+                    AxisTick()
+                    AxisValueLabel(format: range.axisFormat)
+                }
+            }
             .frame(height: 200)
         }
         .padding()
