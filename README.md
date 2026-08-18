@@ -36,8 +36,9 @@ and tune the refresh rate.
   turns **orange at 90%** and **red at 100%** so you notice before you run out.
 - 🔌 **Connect your Claude account** with a browser login, or let it read
   [Claude Code](https://claude.com/claude-code)'s session automatically if it's installed.
-- 📈 **Usage stats** — a Stats window with a timeline chart and a change-by-change
-  log, so you can see how your prompting moves the needle.
+- 📈 **Usage stats** — a Stats window with a chart you can scope to the last
+  **5 hours, 24 hours, or week**, plus a change-by-change log, so you can see how
+  your prompting moves the needle.
 - 🪶 **Native and lightweight** — Swift + AppKit/SwiftUI, no Electron, ~1 MB, negligible memory.
 - 🚀 **Launch at login**, configurable refresh interval, and a clean Settings window.
 
@@ -65,6 +66,19 @@ Quit
 a timeline that logs each change — e.g. `Jun 15 13:16 — Session 94% (+78) · Weekly
 9% (±0)`. While the window is open the app samples more often so prompt-driven jumps
 show up quickly.
+
+The chart has a range selector above it:
+
+| Range | Shows | Good for |
+|-------|-------|----------|
+| **5 hours** | the trailing 5 hours, hourly ticks | watching the current session window burn down |
+| **24 hours** | the trailing day, 4-hourly ticks | today's shape — when you worked, when it reset |
+| **Week** | the trailing 7 days, daily ticks | the weekly limit's trend (the default) |
+
+The choice is remembered between launches. Readings are only stored when a
+percentage actually changes, so the chart holds the last known value flat across
+quiet stretches instead of leaving gaps. The timeline below the chart always lists
+the full history, regardless of the selected range.
 
 > [!NOTE]
 > The usage endpoint only reports the **aggregate** session/weekly percentages —
