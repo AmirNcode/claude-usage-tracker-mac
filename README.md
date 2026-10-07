@@ -11,29 +11,34 @@
 ![Swift](https://img.shields.io/badge/Swift-AppKit%20%2B%20SwiftUI-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-<img src="docs/images/menubar.png" height="26" alt="Menu bar showing 58% / 6%" />
+<img src="docs/images/menubar.png" height="26" alt="Menu bar showing a usage ring with 68% over 62%" />
 
 </div>
 
 ---
 
-Claude Usage Tracker lives in your menu bar and shows two numbers:
+Claude Usage Tracker lives in your menu bar as a compact progress icon plus two
+stacked numbers:
 
 ```
-58% / 6%
+ ◔  68%    ← top: how much of your current 5-hour session window you've used
+    62%    ← bottom: how much of your 7-day weekly limit you've used
 ```
 
-- **Left** — how much of your current **5-hour session** window you've used.
-- **Right** — how much of your **7-day weekly** limit you've used.
+- **Outer ring** of the icon — **5-hour session** usage; turns **orange at 80%**.
+- **Inner pie** of the icon — **7-day weekly** usage; turns **yellow at 80%**.
+- Both turn **red at 100%**. Below 80% the icon stays monochrome to match the menu bar.
 
 Click it for the exact reset times, and open **Settings** to log in, pick colors,
 and tune the refresh rate.
 
 ## Features
 
-- 🧮 **Session & weekly usage** in the menu bar, updated automatically.
+- 🧮 **Session & weekly usage** in the menu bar, updated automatically — a
+  ring + pie progress icon and two stacked percentages in a ~56 pt-wide item.
 - 🎨 **Custom colors** for each percentage, with optional **threshold highlighting** —
-  turns **orange at 90%** and **red at 100%** so you notice before you run out.
+  at **80%** the session turns **orange** and the weekly turns **yellow**, and both
+  turn **red at 100%** so you notice before you run out.
 - 🔌 **Connect your Claude account** with a browser login, or let it read
   [Claude Code](https://claude.com/claude-code)'s session automatically if it's installed.
 - 📈 **Usage stats** — a Stats window with a chart you can scope to the last
@@ -156,7 +161,7 @@ sections.
 | Section | Options |
 |---------|---------|
 | **Account** | Connection status, last refreshed time, last error, Log in / Log out |
-| **Appearance** | Threshold highlighting (orange ≥90%, red ≥100%), custom colors for session & weekly % |
+| **Appearance** | Threshold highlighting (session orange / weekly yellow ≥80%, red ≥100%), custom colors for session & weekly % |
 | **General** | Launch at login, refresh interval (1–15 min), Refresh now |
 | **Data** | Manual entry (backfill a reading at a chosen time), Reset charts |
 | **About** | Version, links to this repo and the issue tracker |
@@ -189,7 +194,7 @@ scripts/                      icon generation, .app bundling, DMG packaging
 
 ## Troubleshooting
 
-- **`–% / –%` in the menu bar** — not connected. Open Settings → Account and log in,
+- **`–%` over `–%` (empty rings) in the menu bar** — not connected. Open Settings → Account and log in,
   or install and log in to Claude Code.
 - **Numbers look frozen** — check Settings → Account → *Last error*. If you see
   "Rate limited", the app is backing off and will recover automatically; increasing

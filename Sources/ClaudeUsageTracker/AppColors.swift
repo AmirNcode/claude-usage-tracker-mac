@@ -2,14 +2,24 @@ import AppKit
 import UsageCore
 
 enum AppColors {
-    /// Color for a window's percentage: threshold level wins (orange/red), else the
+    /// Warning colors per window: the session (outer ring) goes orange, the weekly
+    /// (inner pie) yellow.
+    static let sessionWarning: NSColor = .systemOrange
+    static let weeklyWarning: NSColor = .systemYellow
+
+    /// Color for a window's percentage: threshold level wins (warning/red), else the
     /// user's custom color, else the system label color (adapts to light/dark).
-    static func color(level: UsageLevel, customHex: String) -> NSColor {
+    static func color(level: UsageLevel, warning: NSColor, customHex: String) -> NSColor {
         switch level {
         case .critical: return .systemRed
-        case .warning: return .systemOrange
+        case .warning: return warning
         case .normal: return NSColor(hex: customHex) ?? .labelColor
         }
+    }
+
+    /// Color for a window's ring/pie: monochrome until the threshold is reached.
+    static func ringColor(level: UsageLevel, warning: NSColor) -> NSColor {
+        color(level: level, warning: warning, customHex: "")
     }
 }
 

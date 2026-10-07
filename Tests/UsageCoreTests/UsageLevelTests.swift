@@ -5,11 +5,11 @@ func runUsageLevelTests() {
     test("below warning threshold is normal") {
         expectEqual(UsageLevel(utilization: 0, thresholdsEnabled: true), .normal)
         expectEqual(UsageLevel(utilization: 50, thresholdsEnabled: true), .normal)
-        expectEqual(UsageLevel(utilization: 89.9, thresholdsEnabled: true), .normal)
+        expectEqual(UsageLevel(utilization: 79.9, thresholdsEnabled: true), .normal)
     }
 
-    test("at or above 90 is warning") {
-        expectEqual(UsageLevel(utilization: 90, thresholdsEnabled: true), .warning)
+    test("at or above 80 is warning") {
+        expectEqual(UsageLevel(utilization: 80, thresholdsEnabled: true), .warning)
         expectEqual(UsageLevel(utilization: 99.9, thresholdsEnabled: true), .warning)
     }
 

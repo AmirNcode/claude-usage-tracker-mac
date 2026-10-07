@@ -141,7 +141,7 @@ struct SettingsView: View {
         Form {
             Section("Threshold colors") {
                 Toggle("Highlight high usage", isOn: $prefs.thresholdsEnabled)
-                Text("Turns a percentage orange at \(Int(UsageLevel.warningThreshold))% and red at \(Int(UsageLevel.criticalThreshold))%, overriding the colors below.")
+                Text("At \(Int(UsageLevel.warningThreshold))% the session ring and % turn orange and the weekly ones yellow; both turn red at \(Int(UsageLevel.criticalThreshold))%. Overrides the colors below.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Menu bar colors") {

@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private let history = UsageHistoryStore()
 
     private var statusItem: NSStatusItem!
+    private let statusView = StatusBarView()
     private var sessionItem: NSMenuItem!
     private var weeklyItem: NSMenuItem!
     private var settingsWindow: NSWindow?
@@ -28,8 +29,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private let maxBackoff: TimeInterval = 30 * 60
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem = NSStatusBar.system.statusItem(withLength: statusView.preferredWidth)
         statusItem.menu = buildMenu()
+        if let button = statusItem.button {
+            statusView.frame = button.bounds
+            statusView.autoresizingMask = [.width, .height]
+            button.addSubview(statusView)
+            button.setAccessibilityLabel("Claude usage")
+        }
         render()
 
         state.source = auth.source
@@ -102,7 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // MARK: - Rendering
 
     private func render() {
-        statusItem.button?.attributedTitle = menuBarTitle(for: state.snapshot)
+        renderStatusItem(state.snapshot)
         if let snapshot = state.snapshot {
             sessionItem.title = "Session   " + UsageFormatter.sessionLine(snapshot)
             weeklyItem.title  = "Weekly    " + UsageFormatter.weeklyLine(snapshot)
@@ -119,27 +126,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
     }
 
-    private func menuBarTitle(for snapshot: UsageSnapshot?) -> NSAttributedString {
-        let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
-        guard let snapshot else {
-            return NSAttributedString(string: "–% / –%",
-                attributes: [.font: font, .foregroundColor: NSColor.labelColor])
-        }
-        let result = NSMutableAttributedString()
-        result.append(part(snapshot.session, customHex: prefs.sessionColorHex, font: font))
-        result.append(NSAttributedString(string: "  /  ",
-            attributes: [.font: font, .foregroundColor: NSColor.labelColor]))
-        result.append(part(snapshot.weekly, customHex: prefs.weeklyColorHex, font: font))
-        return result
-    }
-
-    private func part(_ window: UsageWindow?, customHex: String, font: NSFont) -> NSAttributedString {
-        let pct = Int((window?.utilization ?? 0).rounded())
-        let level = UsageLevel(utilization: window?.utilization, thresholdsEnabled: prefs.thresholdsEnabled)
-        return NSAttributedString(string: "\(pct)%", attributes: [
-            .font: font,
-            .foregroundColor: AppColors.color(level: level, customHex: customHex),
-        ])
+    /// Updates the ring/pie icon and stacked percentages in the menu bar.
+    private func renderStatusItem(_ snapshot: UsageSnapshot?) {
+        let session = snapshot?.session?.utilization
+        let weekly = snapshot?.weekly?.utilization
+        let sessionLevel = UsageLevel(utilization: session, thresholdsEnabled: prefs.thresholdsEnabled)
+        let weeklyLevel = UsageLevel(utilization: weekly, thresholdsEnabled: prefs.thresholdsEnabled)
+        let hasData = snapshot != nil
+        statusView.content = StatusBarView.Content(
+            session: hasData ? (session ?? 0) : nil,
+            weekly: hasData ? (weekly ?? 0) : nil,
+            sessionRingColor: AppColors.ringColor(level: sessionLevel, warning: AppColors.sessionWarning),
+            weeklyRingColor: AppColors.ringColor(level: weeklyLevel, warning: AppColors.weeklyWarning),
+            sessionTextColor: AppColors.color(level: sessionLevel, warning: AppColors.sessionWarning,
+                                              customHex: prefs.sessionColorHex),
+            weeklyTextColor: AppColors.color(level: weeklyLevel, warning: AppColors.weeklyWarning,
+                                             customHex: prefs.weeklyColorHex)
+        )
+        statusItem.button?.toolTip = hasData ? UsageFormatter.menuBarTitle(snapshot) : nil
     }
 
     /// Refresh the cached source/line text when the menu is about to show.

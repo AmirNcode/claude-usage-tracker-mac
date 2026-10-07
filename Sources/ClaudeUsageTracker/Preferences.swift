@@ -12,7 +12,7 @@ final class Preferences: ObservableObject {
         defaults.set(value, forKey: key)
     }
 
-    /// Color thresholds: orange at >=90%, red at >=100%.
+    /// Color thresholds: session orange / weekly yellow at >=80%, red at >=100%.
     @Published var thresholdsEnabled: Bool {
         didSet { defaults.set(thresholdsEnabled, forKey: "thresholdsEnabled") }
     }
